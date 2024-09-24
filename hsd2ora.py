@@ -280,7 +280,7 @@ def extractProject(filename, directory):
     with ZipFile(filename, 'r') as zf:
         zf.extractall(path=directory.name,pwd=b'huion2018')
         #all files will be in a subdir "temp" due to the way hipaint structures project files
-    with open(os.path.join(directory.name, "temp", "project.json")) as f:
+    with open(os.path.join(directory.name, "temp", "project.json"), encoding='utf-8') as f:
         projectDetails = json.load(f)
     #hsd files have weird ways of designating that a layer does not have a parent. to get around that, we get a list of every id that actually exists, and run through the list of layers, checking parent IDs against it. if the parent id does not actually exist, we set it to a negative value, so we can later easily check if a layer is on the root layer by seeing if parent-id <= 0
     extantIDs = []

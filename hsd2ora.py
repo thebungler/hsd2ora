@@ -1,3 +1,4 @@
+from PIL import Image
 import xml.etree.ElementTree
 
 #for some reason, this tries to write boolean values to the xml. so i've modified it to convert them to strings first.
@@ -37,7 +38,7 @@ xml.etree.ElementTree._escape_attrib = override_escape_attrib
 #note: the czipfile lib in pip only works for python2. this script makes use of the python3 port by ziyuang on github
 #https://github.com/ziyuang/czipfile
 from czipfile import ZipFile
-from PIL import Image
+
 import os
 import tempfile
 import json
@@ -202,13 +203,32 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
             layerImageFilePath = os.path.join(projpath, ("flayer_"+str(layer['filename-id'])))
             #layer may be empty. check if file id exists. if it does, add it as the image data
             if(os.path.isfile(layerImageFilePath)):
-                layerImageDataArray = readLayer(layerImageFilePath,hsdDict) #returns image data, x offset, y offset 
-                #really trying to wrangle this into rotating images correctly         
+                layerImageDataArray = readLayer(layerImageFilePath, hsdDict) #returns image data, x offset, y offset 
+                #all of my projects were being exported upside down and mirrored, so i added this. i suppose that's just how the bitmap loads?
+                #invertedXOffset = hsdDict['bounds']['canvas-width'] - layerImageDataArray[1] - layerImageDataArray[0].width
+                
                 invertedYOffset = hsdDict['bounds']['canvas-height'] - layerImageDataArray[2] - layerImageDataArray[0].height
+                #imageData = layerImageDataArray[0].rotate(180) 
                 imageData = layerImageDataArray[0].transpose(method=Image.FLIP_TOP_BOTTOM)
+                
+                '''
+                #now, we crop the layer so that it doesn't extend beyond image boundaries, otherwise python throws errors
+                #we know the layer can only be offset to the right and up, so we don't crop the left or bottom
+                left = 0
+                bottom = 0
+                right = hsdDict['bounds']['canvas-width'] * 9
+                top = hsdDict['bounds']['canvas-height'] * 9
+
+                print("top and right "+str(top)+", "+str(right))
+                print("orig size"+str(imageData.size))
+                imageData = imageData.crop((left, bottom, right, top))
+                '''
+                
                 new_layer  = oraProject.add_layer(imageData, "/", offsets=(layerImageDataArray[1], invertedYOffset))
                 
-            #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render)
+            #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render
+            
+            
             else:
                 new_layer  = oraProject.add_layer(Image.new("RGB", (1, 1)), "/", offsets=(0, 0))
         #filename-id is the important id. the regular id value, as far as i can tell, just indicates the order of the layers--which we automatically derive from the order of the entries in the json file, which just so happens to be the same order as the id values
@@ -249,12 +269,11 @@ def readLayer(filename,hsdDict):
         height = int.from_bytes(chunk[10:12], "little")
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
-
         #if everything is 0, then the layer should not exist. so if it does, that means the layer actually takes up the whole image. this is very stupid.
         if(width+height+x_offset+y_offset) == 0:
             width = hsdDict['bounds']['canvas-width']
             height = hsdDict['bounds']['canvas-height']
-
+        
         #read the rest of the non-header bytes in the chunk. store in bytearray
         imageData = bytearray(chunk[12:(buffer_size + 12)])
         #loop through rest of bytes in file and append to imageData

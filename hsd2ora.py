@@ -203,12 +203,10 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
             #layer may be empty. check if file id exists. if it does, add it as the image data
             if(os.path.isfile(layerImageFilePath)):
                 layerImageDataArray = readLayer(layerImageFilePath) #returns image data, x offset, y offset 
-                #all of my projects were being exported upside down and mirrored, so i added this. i suppose that's just how the bitmap loads?
-                invertedXOffset = hsdDict['bounds']['canvas-width'] - layerImageDataArray[1] - layerImageDataArray[0].width
+                #really trying to wrangle this into rotating images correctly         
                 invertedYOffset = hsdDict['bounds']['canvas-height'] - layerImageDataArray[2] - layerImageDataArray[0].height
-                imageData = layerImageDataArray[0].rotate(180) 
-                #imageData = imageData.transpose(method=Image.FLIP_LEFT_RIGHT)
-                new_layer  = oraProject.add_layer(imageData, "/", offsets=(invertedXOffset, invertedYOffset))
+                imageData = layerImageDataArray[0].transpose(method=Image.FLIP_TOP_BOTTOM)
+                new_layer  = oraProject.add_layer(imageData, "/", offsets=(layerImageDataArray[1], invertedYOffset))
                 
             #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render)
             else:

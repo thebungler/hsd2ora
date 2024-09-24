@@ -4,7 +4,7 @@ An .HSD is a passworded .ZIP file. Every file I've encountered has had the same 
 ## flayer_#
 This is a ZIP file, with a single file called "zip". This file contains image data for a layer. The given number corresponds to the layer's filename-id in the project.json.
 The image data is stored as an RGBA bitmap. The first four bytes, as far as I can tell, do not affect the image data. They're probably used to identify the file type.
-I've given labels to the next 8 bytes, grouping them into four two-byte chunks. XXpos and YYpos determine the position of the layer on the canvas, relative to the bottom left pixel. XXpos is the distance from the left side of the canvas in pixels. YYpos is the distance from the bottom side of the canvas in pixels. XXwid is the width of the layer and YYtal is the height of the layer, both in pixels.
+I've given labels to the next 8 bytes, grouping them into four two-byte chunks. They are ints, stored little-endian. XXpos and YYpos determine the position of the layer on the canvas, relative to the bottom left pixel. XXpos is the distance from the left side of the canvas in pixels. YYpos is the distance from the bottom side of the canvas in pixels. XXwid is the width of the layer and YYtal is the height of the layer, both in pixels.
 
 `56 45 52 01    97 00 9a 02    8e 03 c9 03` <br />
 `Identifier     XXpos YYpos    XXwid YYtal`

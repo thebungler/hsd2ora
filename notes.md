@@ -2,7 +2,7 @@
 An .HSD is a passworded .ZIP file. Every file I've encountered has had the same password, "huion2018". Within the archive is one subdirectory, "temp". This contains all of the project files, which I will go into individually.
 
 ## flayer_#
-This is a ZIP file, with a single file called ZIP. This file contains image data for a layer. The given number corresponds to the layer's filename-id in the project.json.
+This is a ZIP file, with a single file called "zip". This file contains image data for a layer. The given number corresponds to the layer's filename-id in the project.json.
 The image data is stored as an RGBA bitmap. The first four bytes, as far as I can tell, do not affect the image data. They're probably used to identify the file type.
 I've given labels to the next 8 bytes, grouping them into four two-byte chunks. XXpos and YYpos determine the position of the layer on the canvas, relative to the bottom left pixel. XXpos is the distance from the left side of the canvas in pixels. YYpos is the distance from the bottom side of the canvas in pixels. XXwid is the width of the layer and YYtal is the height of the layer, both in pixels.
 

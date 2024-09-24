@@ -2,11 +2,11 @@
 An .HSD is a passworded .ZIP file. Every file I've encountered has had the same password, "huion2018". Within the archive is one subdirectory, "temp". This contains all of the project files, which I will go into individually.
 
 ## flayer_#
-This contains image data for a layer. The given number corresponds to the layer's filename-id in the project.json.
+This is a ZIP file, with a single file called ZIP. This file contains image data for a layer. The given number corresponds to the layer's filename-id in the project.json.
 The image data is stored as an RGBA bitmap. The first four bytes, as far as I can tell, do not affect the image data. They're probably used to identify the file type.
 I've given labels to the next 8 bytes, grouping them into four two-byte chunks. XXpos and YYpos determine the position of the layer on the canvas, relative to the bottom left pixel. XXpos is the distance from the left side of the canvas in pixels. YYpos is the distance from the bottom side of the canvas in pixels. XXwid is the width of the layer and YYtal is the height of the layer, both in pixels.
 
-`50 4b 03 04    14 00 08 08    08 00 80 79` <br />
+`56 45 52 01    97 00 9a 02    8e 03 c9 03` <br />
 `Identifier     XXpos YYpos    XXwid YYtal`
 
 Everything following this header is a series of 4 byte long chunks, each of which represents the RGBA value for a given pixel. Any empty (i.e. fully transparent) pixels at the end of the bitmap are omitted. Entirely empty layers do not have flayer files generated.

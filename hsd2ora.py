@@ -202,7 +202,7 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
             layerImageFilePath = os.path.join(projpath, ("flayer_"+str(layer['filename-id'])))
             #layer may be empty. check if file id exists. if it does, add it as the image data
             if(os.path.isfile(layerImageFilePath)):
-                layerImageDataArray = readLayer(layerImageFilePath) #returns image data, x offset, y offset 
+                layerImageDataArray = readLayer(layerImageFilePath,hsdDict) #returns image data, x offset, y offset 
                 #really trying to wrangle this into rotating images correctly         
                 invertedYOffset = hsdDict['bounds']['canvas-height'] - layerImageDataArray[2] - layerImageDataArray[0].height
                 imageData = layerImageDataArray[0].transpose(method=Image.FLIP_TOP_BOTTOM)
@@ -234,7 +234,7 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
         return True
 
 #reads an hsd layer file and returns a list containing an image, plus offsets
-def readLayer(filename):
+def readLayer(filename,hsdDict):
     #the layer file is a zip containing a bitmap. first, we need to extract the zip.
     tempdir = tempfile.TemporaryDirectory()
     with ZipFile(filename) as zf:
@@ -249,6 +249,12 @@ def readLayer(filename):
         height = int.from_bytes(chunk[10:12], "little")
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
+
+        #if everything is 0, then the layer should not exist. so if it does, that means the layer actually takes up the whole image. this is very stupid.
+        if(width+height+x_offset+y_offset) == 0:
+            width = hsdDict['bounds']['canvas-width']
+            height = hsdDict['bounds']['canvas-height']
+
         #read the rest of the non-header bytes in the chunk. store in bytearray
         imageData = bytearray(chunk[12:(buffer_size + 12)])
         #loop through rest of bytes in file and append to imageData

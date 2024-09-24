@@ -207,7 +207,7 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
                 invertedXOffset = hsdDict['bounds']['canvas-width'] - layerImageDataArray[1] - layerImageDataArray[0].width
                 invertedYOffset = hsdDict['bounds']['canvas-height'] - layerImageDataArray[2] - layerImageDataArray[0].height
                 imageData = layerImageDataArray[0].rotate(180) 
-                imageData = imageData.transpose(method=Image.FLIP_LEFT_RIGHT)
+                #imageData = imageData.transpose(method=Image.FLIP_LEFT_RIGHT)
                 new_layer  = oraProject.add_layer(imageData, "/", offsets=(invertedXOffset, invertedYOffset))
                 
             #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render)

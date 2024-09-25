@@ -270,7 +270,8 @@ def readLayer(filename,hsdDict):
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
         #if everything is 0, then the layer should not exist. so if it does, that means the layer actually takes up the whole image. this is very stupid.
-        if(width+height+x_offset+y_offset) == 0:
+        #if the layer dimensions are bigger than the canvas, just assume the layer is the size of the canvas. my oldest hsd file has ridiculous layer headers that list it as having >60000 pixels to a side.
+        if(width+height+x_offset+y_offset) == 0 or (width > hsdDict['bounds']['canvas-width']) or (height > hsdDict['bounds']['canvas-height']):
             width = hsdDict['bounds']['canvas-width']
             height = hsdDict['bounds']['canvas-height']
         

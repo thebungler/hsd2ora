@@ -34,6 +34,10 @@ A JSON array. Contains a list of JSON objects that represent the project layers,
 - "id" represents this same layer order from bottom to top in number form, starting from 0. This is *not* the value used by parent-id.
 - "filename-id" refers to the flayer that this layer uses, even if it is an empty layer and such a file does not exist. 
 - "parent-id" is the filename-id of the group the layer belongs to, if any; if it does not belong to any group, this may be set to strange values, like -3 or an arbitrary positive value that does not match any other layer. 
+- "clip" determines if a layer is a clipping layer. 
+- "bihuacount" determines stroke count on a given layer. 
+- "bean-type" is 0 for a paint layer, and 1 for a folder layer. I do not know if other possible values exist.
+- "is-3d" determines whether a layer was generated using HiPaint's 3D model tool. The layer is still a flat image in the HSD, and does not contain the actual 3D model.
 - "blend" represents the layer's blending mode as a number. A list of which blending modes correspond to which numbers is provided below.
 <details>
 <summary>Blend modes</summary>
@@ -72,11 +76,7 @@ A JSON array. Contains a list of JSON objects that represent the project layers,
 32:"" <br />
 33:"group penetrate"
 </details>
-- "clip" determines if a layer is a clipping layer. 
-- "bihuacount" determines stroke count on a given layer. 
-- "bean-type" is 0 for a paint layer, and 1 for a folder layer. I do not know if other possible values exist.
-- "is-3d" determines whether a layer was generated using HiPaint's 3D model tool. The layer is still a flat image in the HSD, and does not contain the actual 3D model.
-- I have not investigated the use of "is-foreground" or "is-background", as they were false in all of my project files. 
+I have not investigated the use of "is-foreground" or "is-background", as they were false in all of my project files. 
 
 ## background
 A JSON object. Contains colour information for the background layer, stored in a signed 32-bit integer format. (I was told this, but I'm unfamiliar with the format.) 

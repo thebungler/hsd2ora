@@ -150,6 +150,8 @@ def int_to_hex_color(value):
     hex_color = f'#{red:02X}{green:02X}{blue:02X}'
     return hex_color
 
+#def handleClippingLayer(projectDetails, oraProject, filenameID)
+    #first
 
 #takes an hsd file, converts to ora through a bunch of other functions, saves to output 
 def convertToORA(filename, output):
@@ -172,8 +174,14 @@ def convertToORA(filename, output):
     for x in projectDetails['layers']:
         generateLayer(x, projectDetails, oraProject, projpath)
     #pyora is supposed to be able to handle groups automatically by setting the paths correctly, but i couldn't get it to work, so we loop through the layers again and assign children to parents (because i fear what will happen if i try to assign a layer as a child of a layer that doesn't exist yet)
+    
+    #assign layers to their groups, now that all layers and groups are established.
     for x in projectDetails['layers']:
         assignParent(x['filename-id'], x['parent-id'], oraProject)
+    
+    
+            
+            
     #TO-DO: take "selected-layer" value from json and set selected layer in the ora  (selected-layer will be set to the uuid of the relevant ora layer). bg layer may require special accommodations, i haven't tested it.
     #that should be everything finished. export as osd file. right now to current directory but we can implement user input on that later
     oraProject.save(output)
@@ -269,6 +277,9 @@ def readLayer(filename,hsdDict):
         height = int.from_bytes(chunk[10:12], "little")
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
+
+            
+        
         #if everything is 0, then the layer should not exist. so if it does, that means the layer actually takes up the whole image. this is very stupid.
         #if the layer dimensions are bigger than the canvas, just assume the layer is the size of the canvas. my oldest hsd file has ridiculous layer headers that list it as having >60000 pixels to a side.
         if(width+height+x_offset+y_offset) == 0 or (width > hsdDict['bounds']['canvas-width']) or (height > hsdDict['bounds']['canvas-height']):
@@ -348,5 +359,4 @@ def main(argv):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-
 

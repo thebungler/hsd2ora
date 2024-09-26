@@ -18,4 +18,4 @@ My notes on the format of .HSD files are also on the repo.
 
 ## Current Issues
 - Memory crashes when handling very large images/many files at once
-- Clipping groups not handled correctly; they currently inherit the opacity of all non-clipping layers in the group below them instead of the one directly below any given group of clipping layers
+- Clipping groups not handled correctly; they currently inherit the opacity of all non-clipping layers underneath them within their group, instead of only the one directly below any given clump of clipping layers. (HiPaint essentially turns clipping layers into sub-groups)

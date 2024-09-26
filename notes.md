@@ -11,7 +11,7 @@ I've given labels to the next 8 bytes, grouping them into four two-byte chunks. 
 
 Everything following this header is a series of 4 byte long chunks, each of which represents the RGBA value for a given pixel. Any empty (i.e. fully transparent) pixels at the end of the bitmap are omitted. Entirely empty layers do not have flayer files generated.
 
-If the XXpos, YYpos, XXwid, and YYtal values are all 00 00, that means the layer takes up the entirety of the canvas.
+A layer that takes up the entirety of the canvas will have no header data, only the bitmap data.
 
 ## hsd.json
 This contains HiPaint specific information. This includes the kind of device that file was exported from, the version of HiPaint the file supports, and the display name of the project. There is also a version value, which I have not investigated.

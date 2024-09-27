@@ -20,5 +20,4 @@ Reference layers are not exported, as the reference images are not stored in the
 My notes on the format of .HSD files are also on the repo.
 
 ## Current Issues
-- Clipping groups not handled correctly; they currently inherit the opacity of all non-clipping layers underneath them within their group, instead of only the one directly below any given clump of clipping layers. (HiPaint essentially turns clipping layers into sub-groups)
 - Rotation may be incorrect (low priority)

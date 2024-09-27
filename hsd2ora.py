@@ -34,7 +34,6 @@ def override_escape_attrib(text):
 
 xml.etree.ElementTree._escape_attrib = override_escape_attrib
 
-
 #note: the czipfile lib in pip only works for python2. this script makes use of the python3 port by ziyuang on github
 #https://github.com/ziyuang/czipfile
 from czipfile import ZipFile
@@ -45,7 +44,8 @@ import json
 import pyora
 import io
 import shutil
-
+import math
+import fpng_py
 import argparse
 import sys
 from pathlib import Path
@@ -91,13 +91,36 @@ def overridesave(self, path_or_file, composite_image=None, use_original=False):
                 new_filename = f"/data/layer{filename_counter}.png"
                 layer._elem.attrib["src"] = new_filename
                 filename_counter += 1
-                self._zip_store_image(
-                    zipref, layer["src"], layer.get_image_data(raw=True)
-                )
-        
+                #we can now handle using a path to a png file as image data. this negates having to store the whole uncompressed image in memory.
+                if isinstance((layer.get_image_data(raw=True)), str):
+                    self._zip_store_image(
+                        zipref, layer["src"], (Image.open((layer.get_image_data(raw=True))))
+                    )
+                else:
+                    self._zip_store_image(
+                        zipref, layer["src"], layer.get_image_data(raw=True)
+                    )
+                
         zipref.writestr("stack.xml", xml.etree.ElementTree.tostring(self._elem_root, method="xml"))
 
 pyora.Project.save = overridesave
+
+#fixes a crash when getting z_index
+@property
+def _override_z_index(self):
+    """Get the current z_index
+
+    Get the stacking position of the layer, relative to the group it is in (or the root group).
+    Higher numbers are 'on top' of lower numbers. The lowest value is 1.
+
+    Returns:
+        int: the z_index of the layer
+    """
+    if self.parent is None:
+        return 1
+    return list(reversed(list(self.parent._elem))).index(self._elem) + 1
+
+pyora.Layer.z_index = _override_z_index
 
 #all blending modes i was able to select in hipaint are listed. gaps present are as hipaint has provided them.
 blendmodes = {  0 : "svg:src-over", 
@@ -172,7 +195,7 @@ def convertToORA(filename, output):
     
     #loop through layers and add them to the project
     for x in projectDetails['layers']:
-        generateLayer(x, projectDetails, oraProject, projpath)
+        generateLayer(x, projectDetails, oraProject, projpath, tempdir)
     #pyora is supposed to be able to handle groups automatically by setting the paths correctly, but i couldn't get it to work, so we loop through the layers again and assign children to parents (because i fear what will happen if i try to assign a layer as a child of a layer that doesn't exist yet)
     
     #assign layers to their groups, now that all layers and groups are established.
@@ -184,12 +207,13 @@ def convertToORA(filename, output):
             
     #TO-DO: take "selected-layer" value from json and set selected layer in the ora  (selected-layer will be set to the uuid of the relevant ora layer). bg layer may require special accommodations, i haven't tested it.
     #that should be everything finished. export as osd file. right now to current directory but we can implement user input on that later
-    oraProject.save(output)
-    print("Saved file to " + str( os.path.abspath(output)))
-    '''
+    #oraProject.save(output)
+    
+   
     #refraining from rendering a composite image speeds up performance a bit. may add a parameter to let the user do this if they so wish later
-    oraProject.save(output,composite_image=(Image.new("RGB", (1, 1))))
-    '''
+    oraProject.save(output,composite_image=(Image.open(os.path.join(projpath, "preview"))))
+    print("Saved file to " + str( os.path.abspath(output)))
+
 
 #assigns a layer in an ora file as a child to another layer using UUIDs
 def assignParent(childUUID, parentUUID, oraProject):
@@ -202,7 +226,7 @@ def assignParent(childUUID, parentUUID, oraProject):
     return True
 
 #takes a layer dict from an hsd json file (converted to a dict beforehand), turns into an ora layer in provided ora project file. also needs to be provided with the hsd json as a dict
-def generateLayer(layer, hsdDict, oraProject, projpath): 
+def generateLayer(layer, hsdDict, oraProject, projpath, layerImgDir): 
         #as far as i can tell, bean-type determines whether it's a paint layer or group
         if layer['bean-type'] == 1:
             new_layer = oraProject.add_group(path="/")
@@ -211,32 +235,10 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
             layerImageFilePath = os.path.join(projpath, ("flayer_"+str(layer['filename-id'])))
             #layer may be empty. check if file id exists. if it does, add it as the image data
             if(os.path.isfile(layerImageFilePath)):
-                layerImageDataArray = readLayer(layerImageFilePath, hsdDict) #returns image data, x offset, y offset 
-                #all of my projects were being exported upside down and mirrored, so i added this. i suppose that's just how the bitmap loads?
-                #invertedXOffset = hsdDict['bounds']['canvas-width'] - layerImageDataArray[1] - layerImageDataArray[0].width
-                
-                invertedYOffset = hsdDict['bounds']['canvas-height'] - layerImageDataArray[2] - layerImageDataArray[0].height
-                #imageData = layerImageDataArray[0].rotate(180) 
-                imageData = layerImageDataArray[0].transpose(method=Image.FLIP_TOP_BOTTOM)
-                
-                '''
-                #now, we crop the layer so that it doesn't extend beyond image boundaries, otherwise python throws errors
-                #we know the layer can only be offset to the right and up, so we don't crop the left or bottom
-                left = 0
-                bottom = 0
-                right = hsdDict['bounds']['canvas-width'] * 9
-                top = hsdDict['bounds']['canvas-height'] * 9
-
-                print("top and right "+str(top)+", "+str(right))
-                print("orig size"+str(imageData.size))
-                imageData = imageData.crop((left, bottom, right, top))
-                '''
-                
-                new_layer  = oraProject.add_layer(imageData, "/", offsets=(layerImageDataArray[1], invertedYOffset))
-                
+                layerImageDataArray = readLayer(layerImageFilePath, hsdDict, layerImgDir) #returns path to png image data, x offset, y offset 
+                invertedYOffset = layerImageDataArray[2]
+                new_layer  = oraProject.add_layer(layerImageDataArray[0], "/", offsets=(layerImageDataArray[1], invertedYOffset))
             #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render
-            
-            
             else:
                 new_layer  = oraProject.add_layer(Image.new("RGB", (1, 1)), "/", offsets=(0, 0))
         #filename-id is the important id. the regular id value, as far as i can tell, just indicates the order of the layers--which we automatically derive from the order of the entries in the json file, which just so happens to be the same order as the id values
@@ -261,8 +263,8 @@ def generateLayer(layer, hsdDict, oraProject, projpath):
         #"is-background" ?
         return True
 
-#reads an hsd layer file and returns a list containing an image, plus offsets
-def readLayer(filename,hsdDict):
+#reads an hsd layer file and returns a list containing a path to the layer img as png, plus offsets
+def readLayer(filename,hsdDict,layerImgDir):
     #the layer file is a zip containing a bitmap. first, we need to extract the zip.
     tempdir = tempfile.TemporaryDirectory()
     with ZipFile(filename) as zf:
@@ -278,32 +280,43 @@ def readLayer(filename,hsdDict):
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
 
-            
-        
-        #if everything is 0, then the layer should not exist. so if it does, that means the layer actually takes up the whole image. this is very stupid.
-        #if the layer dimensions are bigger than the canvas, just assume the layer is the size of the canvas. my oldest hsd file has ridiculous layer headers that list it as having >60000 pixels to a side.
-        if(width+height+x_offset+y_offset) == 0 or (width > hsdDict['bounds']['canvas-width']) or (height > hsdDict['bounds']['canvas-height']):
+        #okokok. ridiculously high/low values means that there are no header values and it is reading pixel data. how do we determine this? divide amount of bytes by 4. compare that number to the width*height. if they are the same, there is no header data. treat the layer as full canvas, and set whole file to imageData.
+        osstat = os.stat((os.path.join(tempdir.name, "zip"))).st_size
+        if (hsdDict['bounds']['canvas-width']*hsdDict['bounds']['canvas-height']) <= (osstat/4):
             width = hsdDict['bounds']['canvas-width']
             height = hsdDict['bounds']['canvas-height']
-        
-        #read the rest of the non-header bytes in the chunk. store in bytearray
-        imageData = bytearray(chunk[12:(buffer_size + 12)])
-        #loop through rest of bytes in file and append to imageData
+            x_offset = 0
+            y_offset = 0
+            imageData = bytearray(chunk)
+        else:
+            #read the rest of the non-header bytes in the chunk. store in bytearray
+            imageData = bytearray(chunk[12:(buffer_size + 12)])
         while chunk:
             chunk = f.read(buffer_size)
             imageData.extend(chunk)
-        #we need 00 00 00 00 to pad out the end of the image until (the amount of bytes from end of headers onward)/4 is equivalent to width*height
-        
-        #size of pure image data without headers
-        actualSize = int((os.path.getsize(filename)-13)/4)
 
-        sizeToMeet = width*height
-        extraBytesNeeded = sizeToMeet - actualSize
-        for _ in range(int(extraBytesNeeded)):
+        #first, calculate how much image data we actually have. 
+        actualRows = (len(imageData)/4)/width
+        #we'll probably get a decimal. we want to round up, which necessitates padding with transparent pixels to fill out the last row. we won't bother calculating the exact amount, we'll allow some overshoot and crop it out.
+        for _ in range(width):
             imageData.extend((b'\x00\x00\x00\x00')) 
-        im = Image.new("RGBA", (width, (height)))
+        im = Image.new("RGBA", (width, math.ceil(actualRows)))
         im.frombytes(imageData)
-        return([im, x_offset, y_offset])
+        del imageData
+        im = im.transpose(method=Image.FLIP_TOP_BOTTOM)
+
+        #then create a canvas of appropriate size and paste it into that.
+        fullDimensions = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        y = height - math.ceil(actualRows)
+        area = (0 ,y) #determines upper left pixel position.
+        fullDimensions.paste(im, area)
+        del im
+        #we're hitting memory errors doing all layers in memory. so we save image and pull it back up when needed.
+        fpng_py.fpng_encode_image_to_file((os.path.join(layerImgDir.name, (filename+".png"))),fullDimensions.tobytes(),width,height,4)
+        y_offset = hsdDict['bounds']['canvas-height'] - y_offset - fullDimensions.height
+        del fullDimensions
+        productFilename = (os.path.join(layerImgDir.name, (filename+".png")))
+        return([productFilename, x_offset, y_offset])
 
 #extracts an hsd project from a provided path, extracts to provided directory, fixes parent ids in project json
 #returns the fixed project json as a dict
@@ -359,4 +372,3 @@ def main(argv):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-

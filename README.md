@@ -4,10 +4,10 @@ A Python script to convert HiPaint .HSD files to .ORA format. Now slightly faste
 ## Requirements
 Generated using pipreqs. The czipfile is the most important, as it is different from the one available on pip.
 
-batch_processing==1.0.1
-[czipfile==1.0.1](https://github.com/ziyuang/czipfile)
-Pillow==10.4.0
-pyora==0.3.11
+batch_processing==1.0.1 <br />
+[czipfile==1.0.1](https://github.com/ziyuang/czipfile) <br />
+Pillow==10.4.0 <br />
+pyora==0.3.11 <br />
 [fpng_py==0.0.3](https://github.com/K0lb3/fpng_py)
 
 ## Notes

@@ -1,4 +1,18 @@
+import os
+import tempfile
+import json
+import pyora
+import io
+import shutil
+import math
+import fpng_py
+import argparse
+import sys
+import uuid
+from pathlib import Path
+from batch_processing import Batch
 from PIL import Image
+from czipfile import ZipFile #https://github.com/ziyuang/czipfile
 import xml.etree.ElementTree
 
 #for some reason, this tries to write boolean values to the xml. so i've modified it to convert them to strings first.
@@ -33,24 +47,6 @@ def override_escape_attrib(text):
         _raise_serialization_error(text)
 
 xml.etree.ElementTree._escape_attrib = override_escape_attrib
-
-#note: the czipfile lib in pip only works for python2. this script makes use of the python3 port by ziyuang on github
-#https://github.com/ziyuang/czipfile
-from czipfile import ZipFile
-
-import os
-import tempfile
-import json
-import pyora
-import io
-import shutil
-import math
-import fpng_py
-import argparse
-import sys
-from pathlib import Path
-from batch_processing import Batch
-
 
 #makes pyora use czipfile to save, so it goes faster 
 def overridesave(self, path_or_file, composite_image=None, use_original=False):
@@ -103,8 +99,6 @@ def overridesave(self, path_or_file, composite_image=None, use_original=False):
                 
         zipref.writestr("stack.xml", xml.etree.ElementTree.tostring(self._elem_root, method="xml"))
 
-pyora.Project.save = overridesave
-
 #fixes a crash when getting z_index
 @property
 def _override_z_index(self):
@@ -121,6 +115,7 @@ def _override_z_index(self):
     return list(reversed(list(self.parent._elem))).index(self._elem) + 1
 
 pyora.Layer.z_index = _override_z_index
+pyora.Project.save = overridesave
 
 #all blending modes i was able to select in hipaint are listed. gaps present are as hipaint has provided them.
 blendmodes = {  0 : "svg:src-over", 
@@ -173,9 +168,6 @@ def int_to_hex_color(value):
     hex_color = f'#{red:02X}{green:02X}{blue:02X}'
     return hex_color
 
-#def handleClippingLayer(projectDetails, oraProject, filenameID)
-    #first
-
 #takes an hsd file, converts to ora through a bunch of other functions, saves to output 
 def convertToORA(filename, output):
     print("Attempting to convert " + str( os.path.abspath(filename)))
@@ -185,8 +177,8 @@ def convertToORA(filename, output):
     projpath = os.path.join(tempdir.name, "temp")
     
     #create new ora with height taken from hsd json 
+    #TO-DO: cropping? i haven't accounted for the vars for it in the json, but it doesn't seem to affect the final image in any of my hsd files
     oraProject = pyora.Project.new(projectDetails['bounds']['canvas-width'], projectDetails['bounds']['canvas-height'])
-    #TO-DO: cropping?
     
     #background is handled separately from layers in the hsd, so we do it before
     #converting the colour to hex might be unnecessary. test
@@ -196,24 +188,78 @@ def convertToORA(filename, output):
     #loop through layers and add them to the project
     for x in projectDetails['layers']:
         generateLayer(x, projectDetails, oraProject, projpath, tempdir)
-    #pyora is supposed to be able to handle groups automatically by setting the paths correctly, but i couldn't get it to work, so we loop through the layers again and assign children to parents (because i fear what will happen if i try to assign a layer as a child of a layer that doesn't exist yet)
     
+    
+        
     #assign layers to their groups, now that all layers and groups are established.
+    #pyora is supposed to be able to handle groups automatically by setting the paths correctly, but i couldn't get it to work, so we loop through the layers again and assign children to parents (because i fear what will happen if i try to assign a layer as a child of a layer that doesn't exist yet)
     for x in projectDetails['layers']:
         assignParent(x['filename-id'], x['parent-id'], oraProject)
-    
-    
-            
-            
+        
+    #now that all layers are in, loop through again. determine clipping sub groups. group them. assign the group the id of their base layer.
+    groupClipping(projectDetails, oraProject)
+
     #TO-DO: take "selected-layer" value from json and set selected layer in the ora  (selected-layer will be set to the uuid of the relevant ora layer). bg layer may require special accommodations, i haven't tested it.
-    #that should be everything finished. export as osd file. right now to current directory but we can implement user input on that later
-    #oraProject.save(output)
     
-   
-    #refraining from rendering a composite image speeds up performance a bit. may add a parameter to let the user do this if they so wish later
+    #that should be everything finished. export as osd file. pull composite img directly from hsd.
     oraProject.save(output,composite_image=(Image.open(os.path.join(projpath, "preview"))))
     print("Saved file to " + str( os.path.abspath(output)))
 
+
+def groupClipping(projectDetails, oraProject):
+    innerCounter = 0
+    #look through layers. skip layers already assigned to clipping groups, and non-clipping layers.
+    for x in projectDetails['layers']:
+        #print("scanning layer " + str(x['filename-id']))
+        if innerCounter > 0:
+            #print("skipping layer")
+            innerCounter = innerCounter - 1
+            continue
+        if x['clip'] != True:
+            #print("not a clipping layer. "+str(x['filename-id']))
+            continue
+        #got a clipping layer. take note of its parent so we know where to assign the clipping group layer later on. also generate the clipping group in ora
+        hipaintparent = str(x['parent-id'])
+        parentORALayer = oraProject.get_by_uuid(str(x['filename-id'])).parent
+        clippingGroup = oraProject.add_group(path="/")
+        clippingGroup.name = (projectDetails['layers'][(x['id']-1)]['name']) + (" clipgrouphandler")
+        #start tracking the layers we'll group. start with this layer and the layer right below it (the base layer).
+        layersToMove = []
+        layersToMove.append(projectDetails['layers'][(x['id']-1)])
+        layersToMove.append(projectDetails['layers'][(x['id'])])
+        #check if next one up is same parent and clipping.
+        innerCounter = 1
+        while True:
+            if (x['id']+innerCounter) > len(projectDetails['layers']):
+                #print("prospect is over top layer.")
+                innerCounter  = innerCounter - 1
+                break
+            #print("checking prospect w/ order id: " + str((x['id']+innerCounter)))
+            prospectLayer = projectDetails['layers'][(x['id']+innerCounter)]
+            if str(prospectLayer['parent-id']) != hipaintparent:
+                #print("prospect is not from same parent. "+ str(prospectLayer['filename-id']))
+                #print(str(prospectLayer['parent-id']) + ", compared to our golden: "+str(hipaintparent))
+                innerCounter  = innerCounter - 1
+                break
+            if prospectLayer['clip'] == False:
+                #print("prospect is not a clipping layer. " + str(prospectLayer['filename-id']))
+                innerCounter  = innerCounter - 1
+                break
+            innerCounter = innerCounter + 1
+            layersToMove.append(prospectLayer)
+            continue
+        #now we know all the layers we want in our group. turrah turrah! note down base layer uuid and z_index.
+        baseLayer = oraProject.get_by_uuid(str(projectDetails['layers'][x['id']-1]['filename-id']))
+        baseZ = baseLayer.z_index
+        baseUUID = baseLayer.uuid
+        #then move all layers into clipping group.
+        #print("moving these layers into clip group: "+str(layersToMove))
+        for m in layersToMove:
+            oraProject.move(str(m['filename-id']), clippingGroup.uuid,dst_z_index='above') #dst_z_index?
+        #change base layer uuid to random. then assign old base layer uuid to our clipping group, and move it into the old z index.
+        oraProject.get_by_uuid(hipaintparent).uuid = str(uuid.uuid4())
+        clippingGroup.uuid = baseUUID
+        oraProject.move(baseUUID, parentORALayer.uuid, dst_z_index=baseZ)
 
 #assigns a layer in an ora file as a child to another layer using UUIDs
 def assignParent(childUUID, parentUUID, oraProject):
@@ -225,43 +271,44 @@ def assignParent(childUUID, parentUUID, oraProject):
     oraProject.move(str(childUUID), str(parentUUID), dst_z_index='above')
     return True
 
-#takes a layer dict from an hsd json file (converted to a dict beforehand), turns into an ora layer in provided ora project file. also needs to be provided with the hsd json as a dict
+#takes a layer dict from an hsd json file (converted to a dict beforehand), turns into an ora layer in provided ora project file
+#params: the dict of the specific layer, the hsd dict as a whole, the ora project to add the layer to, the path where hsd project files are stored, path to temp dir where layer image files are stored
 def generateLayer(layer, hsdDict, oraProject, projpath, layerImgDir): 
-        #as far as i can tell, bean-type determines whether it's a paint layer or group
-        if layer['bean-type'] == 1:
-            new_layer = oraProject.add_group(path="/")
+    #as far as i can tell, bean-type determines whether it's a paint layer or group
+    if layer['bean-type'] == 1:
+        new_layer = oraProject.add_group(path="/")
+    else:
+        #if it's an image layer, get the path of where image data should be
+        layerImageFilePath = os.path.join(projpath, ("flayer_"+str(layer['filename-id'])))
+        #layer may be empty. check if file id exists. if it does, add it as the image data
+        if(os.path.isfile(layerImageFilePath)):
+            layerImageDataArray = readLayer(layerImageFilePath, hsdDict, layerImgDir) #returns path to png image data, x offset, y offset 
+            invertedYOffset = layerImageDataArray[2]
+            new_layer  = oraProject.add_layer(layerImageDataArray[0], "/", offsets=(layerImageDataArray[1], invertedYOffset))
+        #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render
         else:
-            #if it's an image layer, get the path of where image data should be
-            layerImageFilePath = os.path.join(projpath, ("flayer_"+str(layer['filename-id'])))
-            #layer may be empty. check if file id exists. if it does, add it as the image data
-            if(os.path.isfile(layerImageFilePath)):
-                layerImageDataArray = readLayer(layerImageFilePath, hsdDict, layerImgDir) #returns path to png image data, x offset, y offset 
-                invertedYOffset = layerImageDataArray[2]
-                new_layer  = oraProject.add_layer(layerImageDataArray[0], "/", offsets=(layerImageDataArray[1], invertedYOffset))
-            #or else, if the layer is empty, generate empty image data (so that it doesn't lock up for lack of data to render
-            else:
-                new_layer  = oraProject.add_layer(Image.new("RGB", (1, 1)), "/", offsets=(0, 0))
-        #filename-id is the important id. the regular id value, as far as i can tell, just indicates the order of the layers--which we automatically derive from the order of the entries in the json file, which just so happens to be the same order as the id values
-        new_layer.uuid = str(layer['filename-id'])
-        new_layer.name = str(layer['name'])
-        #now add any attributes
-        if layer['visible'] is False:           
-            new_layer.visible = False
-        new_layer.opacity = layer['opacity']
-        #"lock-opacity" in the hsd is whether transparent pixels are locked. i cannot find an attribute in the osd specs that implements this, and since krita does not retain this setting upon saving, i do not think there is one. however, i've put it here anyway, in case it's implemented later. thankfully, it does not affect the final image.
-        new_layer["lock-opacity"] = layer['lock-opacity']
-        if layer['blend'] == 33:
-            #penetrate blend mode is treated as an attribute in ORA
-            new_layer.isolated = False;
-        else:
-            #blend determines blend mode. this is a pain, because they're assigned numbers instead of string based names. i've made a dict with all the numbers assigned their appropriate blending mode name, for ease of use.
-            #if you crash because of an unspecified blend mode, add it to the dict above, and then let me know about it so i can do the same
-            new_layer["composite-op"] = blendmodes[layer['blend']]
-        new_layer["alpha-preserve"] = layer['clip']
-        new_layer["edit-locked"] = layer['lock-layer']
-        #"is-foreground" ?
-        #"is-background" ?
-        return True
+            new_layer  = oraProject.add_layer(Image.new("RGB", (1, 1)), "/", offsets=(0, 0))
+    #filename-id is the important id. the regular id value, as far as i can tell, just indicates the order of the layers--which we automatically derive from the order of the entries in the json file, which just so happens to be the same order as the id values
+    new_layer.uuid = str(layer['filename-id'])
+    new_layer.name = str(layer['name'])
+    #now add any attributes
+    if layer['visible'] is False:           
+        new_layer.visible = False
+    new_layer.opacity = layer['opacity']
+    #"lock-opacity" in the hsd is whether transparent pixels are locked. i cannot find an attribute in the osd specs that implements this, and since krita does not retain this setting upon saving, i do not think there is one. however, i've put it here anyway, in case it's implemented later. thankfully, it does not affect the final image.
+    new_layer["lock-opacity"] = layer['lock-opacity']
+    if layer['blend'] == 33:
+        #penetrate blend mode is treated as an attribute in ORA
+        new_layer.isolated = False;
+    else:
+        #blend determines blend mode. this is a pain, because they're assigned numbers instead of string based names. i've made a dict with all the numbers assigned their appropriate blending mode name, for ease of use.
+        #if you crash because of an unspecified blend mode, add it to the dict above, and then let me know about it so i can do the same
+        new_layer["composite-op"] = blendmodes[layer['blend']]
+    new_layer["alpha-preserve"] = layer['clip']
+    new_layer["edit-locked"] = layer['lock-layer']
+    #"is-foreground" ?
+    #"is-background" ?
+    return True
 
 #reads an hsd layer file and returns a list containing a path to the layer img as png, plus offsets
 def readLayer(filename,hsdDict,layerImgDir):
@@ -280,7 +327,7 @@ def readLayer(filename,hsdDict,layerImgDir):
         x_offset = int.from_bytes(chunk[4:6], "little")
         y_offset =int.from_bytes(chunk[6:8], "little")
 
-        #okokok. ridiculously high/low values means that there are no header values and it is reading pixel data. how do we determine this? divide amount of bytes by 4. compare that number to the width*height. if they are the same, there is no header data. treat the layer as full canvas, and set whole file to imageData.
+        #ridiculously high/low values means that there are no header values and it is reading pixel data. how do we avoid this? divide amount of bytes in the layer file by 4. compare that number to the width*height. if they are the same, there is no header data. treat the layer as full canvas, and set whole file to imageData.
         osstat = os.stat((os.path.join(tempdir.name, "zip"))).st_size
         if (hsdDict['bounds']['canvas-width']*hsdDict['bounds']['canvas-height']) <= (osstat/4):
             width = hsdDict['bounds']['canvas-width']

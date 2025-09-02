@@ -218,6 +218,9 @@ def groupClipping(projectDetails, oraProject):
         if x['clip'] != True:
             #print("not a clipping layer. "+str(x['filename-id']))
             continue
+        #handle root layer attribution so we don't get errors
+        if x['parent-id'] == -999:
+            continue
         #got a clipping layer. take note of its parent so we know where to assign the clipping group layer later on. also generate the clipping group in ora
         hipaintparent = str(x['parent-id'])
         parentORALayer = oraProject.get_by_uuid(str(x['filename-id'])).parent
@@ -419,3 +422,4 @@ def main(argv):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
